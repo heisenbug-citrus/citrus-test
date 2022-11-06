@@ -129,4 +129,29 @@ public class SampleJavaIT extends TestNGCitrusSpringSupport {
                 .validate(jsonPath().expression("$.error", "@contains(${X-ID-Request})@"))
         );
     }
+
+    @CitrusTest
+
+    public void testNegativeUseBehavior(@Optional @CitrusResource TestContext contex) {
+        variable("X-ID-Request", "citrus:randomNumber(11)");
+        variable("accountNumber", "citrus:randomNumber(8)");
+
+        //Тоже самое что и вдругих тестах, только логика завернута в TestBehavior
+        // Один из возможных примеров
+        run(applyBehavior(new HttpClientRequest(
+                contex,
+                false,
+                "123",
+                contex.getVariable("accountNumber"),
+                "100",
+                "USD"
+        )));
+
+        run(http()
+                .client("httpClient")
+                .receive()
+                .response(HttpStatus.NOT_ACCEPTABLE)
+                .validate(jsonPath().expression("$.error", "@contains(${X-ID-Request})@"))
+        );
+    }
 }
