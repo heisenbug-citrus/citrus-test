@@ -23,5 +23,9 @@
     <citrus:global-variables>
         <citrus:variable name="project.name" value="Citrus Integration Tests"/>
     </citrus:global-variables>
-    	
+    <citrus-http:client id="httpClient" request-url="http://localhost:8081/"/>
+    <citrus-http:server id="restServer"
+                        port="8088"
+                        auto-start="true"
+                        timeout="12000"/>
 </beans>
