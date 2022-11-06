@@ -11,6 +11,7 @@ import com.consol.citrus.annotations.CitrusTest;
 import com.consol.citrus.testng.spring.TestNGCitrusSpringSupport;
 
 import static com.consol.citrus.actions.EchoAction.Builder.echo;
+import static com.consol.citrus.dsl.JsonPathSupport.jsonPath;
 import static com.consol.citrus.http.actions.HttpActionBuilder.http;
 
 /**
@@ -38,7 +39,7 @@ public class SampleJavaIT extends TestNGCitrusSpringSupport {
     public void positive(@Optional @CitrusResource TestContext contex) {
         variable("X-ID-Request", "citrus:randomNumber(10)");
         variable("accountNumber", "citrus:randomNumber(8)");
-
+        // Отправка запроса от клиента к системе
         run(http() // <--------- http для работы с HTTP
                 .client("httpClient") // <--------- client, так как отправка зпроса от клиента,  httpClient - id из citrus-context.xml
                 .send() // <--------- send отправка запроса
@@ -54,7 +55,7 @@ public class SampleJavaIT extends TestNGCitrusSpringSupport {
                         "}\n")
                 .fork(true)
         );
-
+        // Перехват и проверка запроса от системы во внешние системы (интеграции)
         run(http()
                         .server("restServer") // <------ server + id из citrus-context.xml
                         .receive() // <------ receive входящий запрос от теструемой системы
@@ -71,6 +72,8 @@ public class SampleJavaIT extends TestNGCitrusSpringSupport {
                 // Способов валидации множество, один из них:
 //                      .validate(jsonPath().expression("$.accountNumber", "@contains(95753174)@"))
         );
+
+        // Если запрос действительно наш, о чём говорит флаг, присылаем ответ в тестируемую систему
         if (received) {
             run(http()
                     .server("restServer")
@@ -81,15 +84,74 @@ public class SampleJavaIT extends TestNGCitrusSpringSupport {
                     .body("OK")
             );
         }
-
+        // Валидация ответа клиенту на запрос, который был оптравлен первым шагом
         run(
                 http()
                         .client("httpClient")
                         .receive()
                         .response()
                         .validate((message, testContext) -> {
-                            Assert.assertTrue(message.getPayload().toString().contains(testContext.getVariable("accountNumber")));
+                            String accountNumber = testContext.getVariable("accountNumber");
+                            String accountNumberTestContext = contex.getVariable("accountNumber");
+                            // accountNumberTestContext equals accountNumber
+                            // Разница лишь в том, что testContext недоступен в другиз частях кода
+                            Assert.assertTrue(message.getPayload().toString().contains(accountNumber));
                         })
+        );
+    }
+
+    @CitrusTest
+    public void testNegative() {
+        variable("X-ID-Request", "citrus:randomNumber(11)");
+        variable("accountNumber", "citrus:randomNumber(8)");
+
+        // Отправка запроса от клиента к системе
+        run(http() // <--------- http для работы с HTTP
+                .client("httpClient") // <--------- client, так как отправка зпроса от клиента,  httpClient - id из citrus-context.xml
+                .send() // <--------- send отправка запроса
+                .post("api/v1/convert") // <--------- post запрос + path
+                .message() // <--------- формируем сообщение
+                .contentType("application/json") // <--------- contentType
+                .header("X-ID-Request", "${X-ID-Request}") // <--------- ${X-ID-Request} подставляет значение
+                .body("{\n" +
+                        "   \"sortCode\":\"35-16-67\",\n" +
+                        "   \"accountNumber\":\"${accountNumber}\",\n" +  // <--------- ${accountNumber} подставляет значение
+                        "   \"sum\":\"100\",\n" +
+                        "   \"currency\":\"USD\"\n" +
+                        "}\n")
+                .fork(false) // <---- fork false для негативного сценария, так как получаем ответ сразу, без доп шагов
+        );
+
+        run(http()
+                .client("httpClient")
+                .receive()
+                .response(HttpStatus.NOT_ACCEPTABLE)
+                .validate(jsonPath().expression("$.error", "@contains(${X-ID-Request})@"))
+        );
+    }
+
+    @CitrusTest
+
+    public void testNegativeUseBehavior(@Optional @CitrusResource TestContext contex) {
+        variable("X-ID-Request", "citrus:randomNumber(11)");
+        variable("accountNumber", "citrus:randomNumber(8)");
+
+        //Тоже самое что и вдругих тестах, только логика завернута в TestBehavior
+        // Один из возможных примеров
+        run(applyBehavior(new HttpClientRequest(
+                contex,
+                false,
+                "123",
+                contex.getVariable("accountNumber"),
+                "100",
+                "USD"
+        )));
+
+        run(http()
+                .client("httpClient")
+                .receive()
+                .response(HttpStatus.NOT_ACCEPTABLE)
+                .validate(jsonPath().expression("$.error", "@contains(${X-ID-Request})@"))
         );
     }
 }
